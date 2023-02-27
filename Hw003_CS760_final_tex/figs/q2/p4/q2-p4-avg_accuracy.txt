@@ -1,0 +1,5 @@
+Knn: 1, Avg Accuracy: 0.8332
+Knn: 3, Avg Accuracy: 0.8422
+Knn: 5, Avg Accuracy: 0.8408
+Knn: 7, Avg Accuracy: 0.8462
+Knn: 10, Avg Accuracy: 0.8556
