@@ -14,7 +14,6 @@ The expected figure looks like this.
 """
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier as KNN
-from matplotlib.colors import ListedColormap
 import numpy as np
 import pandas as pd
 import os
@@ -45,12 +44,18 @@ prediction_grid = [[x_n1,x_n2] for x_n1 in twodGrid for x_n2 in  twodGrid]
 knn = KNN(n_neighbors=num_neigh)
 knn.fit(x_train, y_train)
 preds = knn.predict(prediction_grid)
+print(np.unique(preds))
 
 # Plotting the predictions
 pred_x_n1 = [elem[0] for elem in prediction_grid]
 pred_x_n2 = [elem[1] for elem in prediction_grid]
-pred_colors = ListedColormap(['blue', 'red'])
-plt.scatter(pred_x_n1, pred_x_n2, c=preds, cmap=pred_colors, s=2.5, label='pred')
+x_pred = pd.DataFrame({'x_n1': pred_x_n1, 'x_n2': pred_x_n2})
+pred_colors = ['blue', 'red']
+for i, y_val in enumerate(np.unique(preds)):
+    plt.scatter(x_pred.loc[preds==y_val, 'x_n1'],
+                x_pred.loc[preds==y_val, 'x_n2'],
+                c=pred_colors[i], s=2.5, label=f'Pred {i}')
+    # plt.scatter(pred_x_n1, pred_x_n2, c=preds, cmap=pred_colors, s=2.5, label='pred')
 
 # Scatter plot for training data
 train_markers = ['o', '+']
@@ -58,8 +63,10 @@ colors = ['None','black']
 for i, y_val in enumerate(y_train['y_n'].unique()):
     plt.scatter(x_train.loc[y_train['y_n']==y_val, 'x_n1'],
                 x_train.loc[y_train['y_n']==y_val, 'x_n2'],
-                c=colors[i], marker=train_markers[i], edgecolors='black' if train_markers[i] != '+' else 'None', linewidths=1, s=25, label=f'Train')
+                c=colors[i], marker=train_markers[i], edgecolors='black' if train_markers[i] != '+' else 'None', linewidths=1, s=30, label=f'Train {i}')
 plt.title("D2z.txt KNN")
+plt.xlabel('x_n1')
+plt.ylabel('x_n2')
 plt.legend()
 
 # Deciding whether to show plot or save it

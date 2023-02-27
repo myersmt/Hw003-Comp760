@@ -13,34 +13,71 @@ The expected figure looks like this.
 
 """
 import matplotlib.pyplot as plt
+from sklearn.neighbors import KNeighborsClassifier as KNN
+import sklearn.metrics as metrics
 import numpy as np
 import pandas as pd
 import os
 
+# N neighbors
+num_neigh = 1
+
+# Options
+q2_2 = False
+
 # File options
-files = ['D2z.txt','emails.csv']
+file = 'emails.csv'
 
 # read in info
 path_to_data = r'\Data'
 os.chdir(os.getcwd()+path_to_data)
-data = {}
-for file in os.listdir(os.getcwd()):
-    if file[0] == '.': continue
-    if '.csv' in file:
-        data[file]=(pd.read_csv(file))
-    else:
-        data[file]=(pd.read_csv(file, sep=',', names=["x_n1","x_n2","y_n"], index_col=False))
-
-# Defining which data set to use for the code
-df = data[files[1]]
+df=pd.read_csv(file)
 
 # taking off the useless column counters
 for col_name in list(df):
     if 'No.' in col_name:
         df.pop(col_name)
 
-print(df)
+# Seperating test and train data
+# train_df = df[:4000]
+# test_df = df[4000:]
 
-# Organize the data
-def sortData(D, Xi):
-    return D.sort_values(by=Xi).reset_index(drop=True)
+# Creating the folds
+fold_num = 5
+folds = {}
+splits = np.arange(0,len(df),len(df)/fold_num, dtype=int)
+for i, slice in enumerate(splits):
+    cur_fold_num = i+1
+    if i == 0:
+        test_df = df[:slice+splits[1]]
+        train_df = df[slice+splits[1]:]
+    elif i == len(splits):
+        test_df = df[slice:]
+        train_df = df[:slice]
+    else:
+        test_df = df[slice:slice+splits[1]]
+        train_df = df.iloc[np.r_[0:slice, slice+splits[1]:len(df)]]
+    folds[cur_fold_num] = {'test_set': test_df, 'train_set': train_df}
+    # print('test: ',len(folds[cur_fold_num]['test_set']),'train: ',len(folds[cur_fold_num]['train_set']))
+
+fold_analysis = {}
+for fold, data in folds.items():
+    # Creating classifier for the fold
+    knn = KNN(n_neighbors=num_neigh)
+
+    # Training the fold
+    knn.fit(data['train_set'].drop('Prediction', axis=1), data['train_set']['Prediction'])
+
+    # Predicting the fold
+    pred = knn.predict(data['test_set'].drop('Prediction', axis=1))
+
+    # finding the information
+    acc = metrics.accuracy_score(data['test_set']['Prediction'], pred)
+    prec = metrics.precision_score(data['test_set']['Prediction'], pred)
+    recall = metrics.recall_score(data['test_set']['Prediction'], pred)
+    fold_analysis[fold] = {'Fold': fold, 'Accuracy': acc, 'Precision': prec, 'Recall': recall}
+
+# Printing the answers for each fold for question 2.2
+if q2_2:
+    for key, val in  fold_analysis.items():
+        print(val)
