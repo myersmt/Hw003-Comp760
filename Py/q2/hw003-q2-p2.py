@@ -22,7 +22,8 @@ import os
 # options
 q2_2 = False
 q2_3 = False
-q2_4 = True
+q2_4 = False
+q2_5 = True
 
 # File options
 file = 'emails.csv'
@@ -47,35 +48,52 @@ def avg_vals(folds):
         recall_lis.append(val['Recall'])
     return(np.mean(acc_lis), np.mean(prec_lis), np.mean(recall_lis))
 
-def five_fold_crossvalidation(df, fold_num, num_neigh, learning_rate, num_iterations):
+def five_fold_crossvalidation(df, fold_num = 5, num_neigh = 1, learning_rate = None, num_iterations = 1000, roc = False):
     # Options
     print_vals = False
     # Creating the folds
     folds = {}
-    splits = np.arange(0,len(df),len(df)/fold_num, dtype=int)
-    for i, slice in enumerate(splits):
-        cur_fold_num = i+1
-        if i == 0:
-            test_df = df[:slice+splits[1]]
-            train_df = df[slice+splits[1]:]
-        elif i == len(splits):
-            test_df = df[slice:]
-            train_df = df[:slice]
-        else:
-            test_df = df[slice:slice+splits[1]]
-            train_df = df.iloc[np.r_[0:slice, slice+splits[1]:len(df)]]
-        folds[cur_fold_num] = {'test_set': test_df, 'train_set': train_df}
+    if fold_num > 1:
+        splits = np.arange(0,len(df),len(df)/fold_num, dtype=int)
+        for i, slice in enumerate(splits):
+            cur_fold_num = i+1
+            if i == 0:
+                test_df = df[:slice+splits[1]]
+                train_df = df[slice+splits[1]:]
+            elif i == len(splits):
+                test_df = df[slice:]
+                train_df = df[:slice]
+            else:
+                test_df = df[slice:slice+splits[1]]
+                train_df = df.iloc[np.r_[0:slice, slice+splits[1]:len(df)]]
+            folds[cur_fold_num] = {'test_set': test_df, 'train_set': train_df}
+    else:
+        splits = np.arange(0,len(df),len(df)/5, dtype=int)
+        test_df = df[splits[-1]:]
+        train_df = df[:splits[-1]]
+        #print(test_df, train_df)
+        folds[fold_num] = {'test_set': test_df, 'train_set': train_df}
         # print('test: ',len(folds[cur_fold_num]['test_set']),'train: ',len(folds[cur_fold_num]['train_set']))
 
     fold_analysis = {}
     for fold, data in folds.items():
         # Creating classifier for the fold
         if learning_rate is None:
-            knn = KNN(n_neighbors=num_neigh)
-            # Training the fold
-            knn.fit(data['train_set'].drop('Prediction', axis=1), data['train_set']['Prediction'])
-            # Predicting the fold
-            pred = knn.predict(data['test_set'].drop('Prediction', axis=1))
+            if roc:
+                knn = KNN(n_neighbors=num_neigh)
+                # Training the fold
+                knn.fit(data['train_set'].drop('Prediction', axis=1), data['train_set']['Prediction'])
+                # Predicting the fold
+                pred = knn.predict_proba(data['test_set'].drop('Prediction', axis=1))
+                # Getting the ROC information
+                roc_data = metrics.roc_curve(data['test_set']['Prediction'], pred[:,1])
+                knn_acc = round(metrics.roc_auc_score(data['test_set']['Prediction'], pred[:,1]), 2)
+            else:
+                knn = KNN(n_neighbors=num_neigh)
+                # Training the fold
+                knn.fit(data['train_set'].drop('Prediction', axis=1), data['train_set']['Prediction'])
+                # Predicting the fold
+                pred = knn.predict(data['test_set'].drop('Prediction', axis=1))
         else:
             lin_reg = LinearRegression(learning_rate=learning_rate, num_iterations=num_iterations)
             # Training the fold
@@ -86,15 +104,22 @@ def five_fold_crossvalidation(df, fold_num, num_neigh, learning_rate, num_iterat
             x_test = data['test_set'].drop('Prediction', axis=1).values
             y_test = data['test_set']['Prediction'].values
             pred = lin_reg.predict(x_test)
+            if roc:
+                log_reg = metrics.roc_curve(data['test_set']['Prediction'], pred)
+                log_acc = round(metrics.roc_auc_score(data['test_set']['Prediction'], pred), 2)
 
         # finding the information
-        acc = metrics.accuracy_score(data['test_set']['Prediction'], pred)
-        prec = metrics.precision_score(data['test_set']['Prediction'], pred)
-        recall = metrics.recall_score(data['test_set']['Prediction'], pred)
-        fold_analysis[fold] = {'Fold': fold, 'Accuracy': acc, 'Precision': prec, 'Recall': recall}
+        if roc:
+            pass
+        else:
+            acc = metrics.accuracy_score(data['test_set']['Prediction'], pred)
+            prec = metrics.precision_score(data['test_set']['Prediction'], pred)
+            recall = metrics.recall_score(data['test_set']['Prediction'], pred)
+            fold_analysis[fold] = {'Fold': fold, 'Accuracy': acc, 'Precision': prec, 'Recall': recall}
 
     # Finding the average values
-    avg_acc, _, _ = avg_vals(fold_analysis)
+    if not roc:
+        avg_acc, _, _ = avg_vals(fold_analysis)
 
     # Printing the answers for each fold
     if print_vals:
@@ -107,14 +132,17 @@ def five_fold_crossvalidation(df, fold_num, num_neigh, learning_rate, num_iterat
             print(f'Learning rate: {learning_rate}, Number of iterations: {num_iterations}')
             for key, val in  fold_analysis.items():
                 print(val)
-
-    return(avg_acc)
+    if roc and learning_rate is None:
+        return(roc_data, knn_acc)
+    elif roc and learning_rate is not None:
+        return(log_reg, log_acc)
+    else:
+        return(avg_acc)
 
 # Question 2.2 answer
 if q2_2:
     # N neighbors
-    num_neigh = 1
-    five_fold_crossvalidation(df, 5, num_neigh, None, 1000)
+    five_fold_crossvalidation(df)
 
 # Creating a linear regression class
 class LinearRegression():
@@ -151,12 +179,14 @@ class LinearRegression():
     # Predict function
     def predict(self, X):
         y_pred = self.sigmoid(np.dot(X, self.weights))
-        return [1 if p >= 0.5 else 0 for p in y_pred]
+        # return [1 if p >= 0.5 else 0 for p in y_pred]
+        return y_pred
+
 
 
 # Question 2.3 answer
 if q2_3:
-    print(five_fold_crossvalidation(df, 5, 1, 0.1, 1000))
+    print(five_fold_crossvalidation(df, learning_rate= 0.1))
 
 # Question 2.4 answer
 if q2_4:
@@ -167,9 +197,9 @@ if q2_4:
 
     # Finding the average accuracy for each Knn
     for ind, knn in enumerate(knn_lis):
-        avg_accuracies.append(five_fold_crossvalidation(df, 5, knn, None, 1000))
+        avg_accuracies.append(five_fold_crossvalidation(df, num_neigh = knn))
         avg_acc_dict[knn] = avg_accuracies[ind]
-    
+
     # Printing the acccuracies for each Knn
     for key, val in avg_acc_dict.items():
         print(f'Knn: {key}, Avg Accuracy: {val}')
@@ -185,6 +215,32 @@ if q2_4:
     if save_fig:
         fig_path = r'D:\Documents\UW-Madison\CourseWork\Spring\MachineLearning\Hw\003\figs\q2\q2-p4\\'
         fig_title = 'kNN_5-Fold_Cross_validation.png'
+        plt.savefig(fig_path+fig_title, dpi = 300)
+    else:
+        plt.show()
+
+# Question 2.4 answer
+if q2_5:
+    save_fig = False
+    k = 5
+
+    # Getting the data from both methods
+    roc_data, avg_acc_roc = five_fold_crossvalidation(df, fold_num = 1, num_neigh = k, roc = True)
+    log_reg, avg_acc_log = five_fold_crossvalidation(df, fold_num = 1, num_neigh = k, learning_rate= 0.1, num_iterations=100, roc = True)
+    #print(log_reg, avg_acc_log)
+
+    # Plotting
+    plt.style.use('dark_background')
+    plt.plot(roc_data[0], roc_data[1], c='orange', label=f'KNeighborsClassifier (AUC = {avg_acc_roc})')
+    plt.plot(log_reg[0], log_reg[1], c='blue', label=f'LogisticRegression (AUC = {avg_acc_log})')
+    plt.title('kNN ROC Curves, k = 5', color='white')
+    plt.xlabel('False Positive Rate', color='white')
+    plt.ylabel('True Positive Rate', color='white')
+    plt.legend()
+    plt.grid(True, color='white')
+    if save_fig:
+        fig_path = r'D:\Documents\UW-Madison\CourseWork\Spring\MachineLearning\Hw\003\figs\q2\q2-p5\\'
+        fig_title = 'kNN_ROC_Curves.png'
         plt.savefig(fig_path+fig_title, dpi = 300)
     else:
         plt.show()
